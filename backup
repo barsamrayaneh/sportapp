@@ -1,0 +1,526 @@
+package com.example.feed;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.app.AlertDialog;
+import android.app.ListActivity;
+import android.app.ProgressDialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.graphics.Bitmap;
+import android.graphics.Typeface;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.AdapterView.OnItemClickListener;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.ListAdapter;
+import android.widget.ListView;
+import android.widget.SimpleAdapter;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class MainActivity extends ListActivity {
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		MenuInflater mi = getMenuInflater();
+		mi.inflate(R.menu.main, menu);
+		return true;
+	}
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		if(item.getItemId() == R.id.refresh)
+		{
+		
+		}
+		return super.onOptionsItemSelected(item);
+	}
+	private ProgressDialog pDialog;
+	
+	 
+    // URL to get contacts JSON
+    private static String url = "http://spita.ir/feed/index.php";
+ 
+    // JSON Node names
+    private static final String TAG_TITLE = "title";
+    private static final String TAG_LEAD = "lead";
+    private static final String TAG_BODY = "body";
+    private static final String TAG_IMAGE_URI = "image_uri";
+ 
+    // contacts JSONArray
+    JSONArray contacts = null;
+ 
+    // Hashmap for ListView
+    ArrayList<HashMap<String, String>> contactList;
+ 
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        SQLiteDatabase db = openOrCreateDatabase("feed", MODE_PRIVATE, null);
+        db.execSQL("CREATE TABLE IF NOT EXISTS feed (id int, title varchar, lead varchar, body varchar, image_uri varchar,fav int);");
+        
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo ni = cm.getActiveNetworkInfo();
+		if (ni == null) {
+	         
+			AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create(); //Read Update
+	        alertDialog.setTitle("خطا");
+	        alertDialog.setMessage("اتصال با اینترنت برقرار نیست");
+	        alertDialog.setCancelable(false);
+	        alertDialog.setButton("دوباره سعی کن", new DialogInterface.OnClickListener() { 
+	           public void onClick(DialogInterface dialog, int which) {
+	        	   
+	            	   Intent intent = getIntent();
+	            	   finish();
+	            	   startActivity(intent);
+	              
+	         }
+	       });
+
+	        alertDialog.show();  //<-- See This!
+        }
+ 
+        contactList = new ArrayList<HashMap<String, String>>();
+        
+        ListView lv = getListView();
+        lv.setOnItemClickListener(new OnItemClickListener() {
+
+			@Override
+			public void onItemClick(AdapterView<?> arg0, View view, int position,
+					long id) {
+				//Toast.makeText(getApplicationContext(), ((TextView) view.findViewById(R.id.body)).getText(),
+				         // Toast.LENGTH_SHORT).show();
+				Intent intent = new Intent(MainActivity.this, Detail.class);
+				TextView title = (TextView) view.findViewById(R.id.title);
+				TextView lead = (TextView) view.findViewById(R.id.lead);
+				TextView body = (TextView) view.findViewById(R.id.body);
+				TextView image_uri = (TextView) view.findViewById(R.id.image_uri);
+				ImageView iv = (ImageView) view.findViewById(R.id.image);
+				
+				
+				intent.putExtra("title", title.getText().toString());
+				intent.putExtra("lead", lead.getText().toString());
+				intent.putExtra("body", body.getText().toString());
+				intent.putExtra("image_uri", image_uri.getText().toString());
+				
+				startActivity(intent);
+				
+				
+			}
+		});
+        
+ 
+        // Calling async task to get json
+        new GetContacts().execute();
+    }
+ 
+    /**
+     * Async task class to get json by making HTTP call
+     * */
+    private class GetContacts extends AsyncTask<Void, Void, Void> {
+ 
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            // Showing progress dialog
+            pDialog = new ProgressDialog(MainActivity.this);
+            pDialog.setMessage("لطفا کمی صبر نمایید ...");
+            pDialog.setCancelable(false);
+            pDialog.show();
+ 
+        }
+ 
+        @Override
+        protected Void doInBackground(Void... arg0) {
+            // Creating service handler class instance
+            ServiceHandler sh = new ServiceHandler();
+ 
+            // Making a request to url and getting response
+            String jsonStr = sh.makeServiceCall(url, ServiceHandler.GET);
+ 
+            //Log.d("Response: ", "> " + jsonStr);
+            if (jsonStr != null) {
+                try {
+                    //JSONObject jsonObj = new JSONObject(jsonStr.toString());
+                     
+                    // Getting JSON Array node
+                   // contacts = jsonObj.getJSONArray(jsonStr);
+                	contacts = new JSONArray(jsonStr.toString());
+ 
+                    // looping through All Contacts
+                    for (int i = 0; i < contacts.length(); i++) {
+                        JSONObject c = contacts.getJSONObject(i);
+                         
+                        String title = c.getString(TAG_TITLE);
+                        String lead = c.getString(TAG_LEAD);
+                        String body = c.getString(TAG_BODY);
+                        String image_uri =c.getString(TAG_IMAGE_URI);
+                        
+ 
+                        // tmp hashmap for single contact
+                        HashMap<String, String> contact = new HashMap<String, String>();
+ 
+                        // adding each child node to HashMap key => value
+                        contact.put(TAG_TITLE, title);
+                        contact.put(TAG_LEAD, lead);
+                        contact.put(TAG_BODY, body);
+                        contact.put(TAG_IMAGE_URI, image_uri);
+ 
+                        // adding contact to contact list
+                        contactList.add(contact);
+                    }
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                Log.e("ServiceHandler", "Couldn't get any data from the url");
+            }
+ 
+            return null;
+        }
+ 
+        @Override
+        protected void onPostExecute(Void result) {
+            super.onPostExecute(result);
+            // Dismiss the progress dialog
+            if (pDialog.isShowing())
+                pDialog.dismiss();
+            /**
+             * Updating parsed JSON data into ListView
+             * */
+         // Loader image - will be shown before loading image
+            final int loader = android.R.drawable.ic_menu_slideshow;
+             
+            // Imageview to show
+            final ImageView image = (ImageView) findViewById(R.id.image);
+             
+            // Image url
+            
+             
+            // ImageLoader class instance
+            final ImageLoader imgLoader = new ImageLoader(MainActivity.this);
+             
+            // whenever you want to load an image from url
+            // call DisplayImage function
+            // url - image url to load
+            // loader - loader image, will be displayed before getting image
+            // image - ImageView
+            ListAdapter adapter = new SimpleAdapter(
+                    MainActivity.this, contactList,
+                    R.layout.list_item, new String[] {  TAG_TITLE,
+                            TAG_LEAD, TAG_BODY, TAG_IMAGE_URI}, new int[] { 
+                            R.id.title, R.id.lead, R.id.body,R.id.image_uri } ){
+            	@Override
+            	
+            	public View getView(int position,
+            			View convertView, ViewGroup parent) {
+            		View v = super.getView(position, convertView, parent);
+                    Typeface tf = Typeface.createFromAsset(getApplicationContext().getAssets(),
+                            "fonts/BKoodakBold.ttf");
+                    TextView title = (TextView)v.findViewById(R.id.title);
+                    title.setTypeface(tf);
+                    TextView lead = (TextView)v.findViewById(R.id.lead);
+                    lead.setTypeface(tf);
+                    TextView image_uri = (TextView) v.findViewById(R.id.image_uri);
+                    
+                    
+                 // Imageview to show
+                    String image_url = "http://spita.ir/feed/image/"+image_uri.getText().toString();
+                    ImageView image = (ImageView) v.findViewById(R.id.image);
+                   // image.setImageBitmap(imgLoader.getBitmap(image_url));
+                   imgLoader.DisplayImage(image_url, loader, image,70);
+                    return v;
+            	}
+            
+            };
+           
+            
+            setListAdapter(adapter);
+        }
+    }
+
+    }
+
+package com.example.feed;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.app.AlertDialog;
+import android.app.ListActivity;
+import android.app.ProgressDialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.graphics.Bitmap;
+import android.graphics.Typeface;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.AdapterView.OnItemClickListener;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.ListAdapter;
+import android.widget.ListView;
+import android.widget.SimpleAdapter;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class MainActivity extends ListActivity {
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		MenuInflater mi = getMenuInflater();
+		mi.inflate(R.menu.main, menu);
+		return true;
+	}
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		if(item.getItemId() == R.id.refresh)
+		{
+		
+		}
+		return super.onOptionsItemSelected(item);
+	}
+	private ProgressDialog pDialog;
+	
+	 
+    // URL to get contacts JSON
+    private static String url = "http://spita.ir/feed/index.php";
+ 
+    // JSON Node names
+    private static final String TAG_TITLE = "title";
+    private static final String TAG_LEAD = "lead";
+    private static final String TAG_BODY = "body";
+    private static final String TAG_IMAGE_URI = "image_uri";
+ 
+    // contacts JSONArray
+    JSONArray contacts = null;
+ 
+    // Hashmap for ListView
+    ArrayList<HashMap<String, String>> contactList;
+ 
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        SQLiteDatabase db = openOrCreateDatabase("feed", MODE_PRIVATE, null);
+        db.execSQL("CREATE TABLE IF NOT EXISTS feed (id int, title varchar, lead varchar, body varchar, image_uri varchar,fav int);");
+        
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo ni = cm.getActiveNetworkInfo();
+		if (ni == null) {
+	         
+			AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create(); //Read Update
+	        alertDialog.setTitle("خطا");
+	        alertDialog.setMessage("اتصال با اینترنت برقرار نیست");
+	        alertDialog.setCancelable(false);
+	        alertDialog.setButton("دوباره سعی کن", new DialogInterface.OnClickListener() { 
+	           public void onClick(DialogInterface dialog, int which) {
+	        	   
+	            	   Intent intent = getIntent();
+	            	   finish();
+	            	   startActivity(intent);
+	              
+	         }
+	       });
+
+	        alertDialog.show();  //<-- See This!
+        }
+ 
+        contactList = new ArrayList<HashMap<String, String>>();
+        
+        ListView lv = getListView();
+        lv.setOnItemClickListener(new OnItemClickListener() {
+
+			@Override
+			public void onItemClick(AdapterView<?> arg0, View view, int position,
+					long id) {
+				//Toast.makeText(getApplicationContext(), ((TextView) view.findViewById(R.id.body)).getText(),
+				         // Toast.LENGTH_SHORT).show();
+				Intent intent = new Intent(MainActivity.this, Detail.class);
+				TextView title = (TextView) view.findViewById(R.id.title);
+				TextView lead = (TextView) view.findViewById(R.id.lead);
+				TextView body = (TextView) view.findViewById(R.id.body);
+				TextView image_uri = (TextView) view.findViewById(R.id.image_uri);
+				ImageView iv = (ImageView) view.findViewById(R.id.image);
+				
+				
+				intent.putExtra("title", title.getText().toString());
+				intent.putExtra("lead", lead.getText().toString());
+				intent.putExtra("body", body.getText().toString());
+				intent.putExtra("image_uri", image_uri.getText().toString());
+				
+				startActivity(intent);
+				
+				
+			}
+		});
+        
+ 
+        // Calling async task to get json
+        new GetContacts().execute();
+    }
+ 
+    /**
+     * Async task class to get json by making HTTP call
+     * */
+    private class GetContacts extends AsyncTask<Void, Void, Void> {
+ 
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            // Showing progress dialog
+            pDialog = new ProgressDialog(MainActivity.this);
+            pDialog.setMessage("لطفا کمی صبر نمایید ...");
+            pDialog.setCancelable(false);
+            pDialog.show();
+ 
+        }
+ 
+        @Override
+        protected Void doInBackground(Void... arg0) {
+            // Creating service handler class instance
+            ServiceHandler sh = new ServiceHandler();
+ 
+            // Making a request to url and getting response
+            String jsonStr = sh.makeServiceCall(url, ServiceHandler.GET);
+ 
+            //Log.d("Response: ", "> " + jsonStr);
+            if (jsonStr != null) {
+                try {
+                    //JSONObject jsonObj = new JSONObject(jsonStr.toString());
+                     
+                    // Getting JSON Array node
+                   // contacts = jsonObj.getJSONArray(jsonStr);
+                	contacts = new JSONArray(jsonStr.toString());
+ 
+                    // looping through All Contacts
+                    for (int i = 0; i < contacts.length(); i++) {
+                        JSONObject c = contacts.getJSONObject(i);
+                         
+                        String title = c.getString(TAG_TITLE);
+                        String lead = c.getString(TAG_LEAD);
+                        String body = c.getString(TAG_BODY);
+                        String image_uri =c.getString(TAG_IMAGE_URI);
+                        
+ 
+                        // tmp hashmap for single contact
+                        HashMap<String, String> contact = new HashMap<String, String>();
+ 
+                        // adding each child node to HashMap key => value
+                        contact.put(TAG_TITLE, title);
+                        contact.put(TAG_LEAD, lead);
+                        contact.put(TAG_BODY, body);
+                        contact.put(TAG_IMAGE_URI, image_uri);
+ 
+                        // adding contact to contact list
+                        contactList.add(contact);
+                    }
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                Log.e("ServiceHandler", "Couldn't get any data from the url");
+            }
+ 
+            return null;
+        }
+ 
+        @Override
+        protected void onPostExecute(Void result) {
+            super.onPostExecute(result);
+            // Dismiss the progress dialog
+            if (pDialog.isShowing())
+                pDialog.dismiss();
+            /**
+             * Updating parsed JSON data into ListView
+             * */
+         // Loader image - will be shown before loading image
+            final int loader = android.R.drawable.ic_menu_slideshow;
+             
+            // Imageview to show
+            final ImageView image = (ImageView) findViewById(R.id.image);
+             
+            // Image url
+            
+             
+            // ImageLoader class instance
+            final ImageLoader imgLoader = new ImageLoader(MainActivity.this);
+             
+            // whenever you want to load an image from url
+            // call DisplayImage function
+            // url - image url to load
+            // loader - loader image, will be displayed before getting image
+            // image - ImageView
+            ListAdapter adapter = new SimpleAdapter(
+                    MainActivity.this, contactList,
+                    R.layout.list_item, new String[] {  TAG_TITLE,
+                            TAG_LEAD, TAG_BODY, TAG_IMAGE_URI}, new int[] { 
+                            R.id.title, R.id.lead, R.id.body,R.id.image_uri } ){
+            	@Override
+            	
+            	public View getView(int position,
+            			View convertView, ViewGroup parent) {
+            		View v = super.getView(position, convertView, parent);
+                    Typeface tf = Typeface.createFromAsset(getApplicationContext().getAssets(),
+                            "fonts/BKoodakBold.ttf");
+                    TextView title = (TextView)v.findViewById(R.id.title);
+                    title.setTypeface(tf);
+                    TextView lead = (TextView)v.findViewById(R.id.lead);
+                    lead.setTypeface(tf);
+                    TextView image_uri = (TextView) v.findViewById(R.id.image_uri);
+                    
+                    
+                 // Imageview to show
+                    String image_url = "http://spita.ir/feed/image/"+image_uri.getText().toString();
+                    ImageView image = (ImageView) v.findViewById(R.id.image);
+                   // image.setImageBitmap(imgLoader.getBitmap(image_url));
+                   imgLoader.DisplayImage(image_url, loader, image,70);
+                    return v;
+            	}
+            
+            };
+           
+            
+            setListAdapter(adapter);
+        }
+    }
+
+    }
+
